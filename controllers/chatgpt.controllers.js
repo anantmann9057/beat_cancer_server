@@ -1,4 +1,13 @@
-import chatGPTService from '../services/chatgpt.service.js';
+import ChatGPTService from '../services/chatgpt.service.js';
+
+// Lazy initialization - create instance only when needed
+let chatGPTService = null;
+const getChatGPTService = () => {
+  if (!chatGPTService) {
+    chatGPTService = new ChatGPTService();
+  }
+  return chatGPTService;
+};
 import { ChatConversation } from '../models/chat.models.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -32,7 +41,7 @@ export const generateChatResponse = asyncHandler(async (req, res) => {
     const history = conversation.getConversationHistory();
 
     // Generate response
-    const response = await chatGPTService.generateResponse(query, context, history);
+    const response = await getChatGPTService().generateResponse(query, context, history);
     
     if (response.success) {
       // Add AI response to conversation
@@ -187,7 +196,7 @@ export const updateChatContext = asyncHandler(async (req, res) => {
 // Get available ChatGPT models (public endpoint)
 export const getAvailableModels = asyncHandler(async (req, res) => {
   try {
-    const models = await chatGPTService.getAvailableModels();
+    const models = await getChatGPTService().getAvailableModels();
     
     return res.status(200).json(
       new ApiResponse(200, models, 'Available models retrieved successfully')
@@ -212,7 +221,7 @@ export const moderateContent = asyncHandler(async (req, res) => {
   }
 
   try {
-    const moderation = await chatGPTService.moderateContent(content);
+    const moderation = await getChatGPTService().moderateContent(content);
     
     return res.status(200).json(
       new ApiResponse(200, moderation, 'Content moderation completed')
@@ -229,7 +238,7 @@ export const moderateContent = asyncHandler(async (req, res) => {
 // Get system prompts (public endpoint)
 export const getSystemPrompts = asyncHandler(async (req, res) => {
   try {
-    const prompts = chatGPTService.getSystemPrompts();
+    const prompts = getChatGPTService().getSystemPrompts();
     
     return res.status(200).json(
       new ApiResponse(200, prompts, 'System prompts retrieved successfully')
@@ -254,7 +263,7 @@ export const updateSystemPrompt = asyncHandler(async (req, res) => {
   }
 
   try {
-    chatGPTService.updateSystemPrompt(context, prompt);
+    getChatGPTService().updateSystemPrompt(context, prompt);
     
     return res.status(200).json(
       new ApiResponse(200, {

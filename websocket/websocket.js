@@ -1,5 +1,14 @@
 import { WebSocket } from 'ws';
-import chatGPTService from '../services/chatgpt.service.js';
+import ChatGPTService from '../services/chatgpt.service.js';
+
+// Lazy initialization - create instance only when needed
+let chatGPTService = null;
+const getChatGPTService = () => {
+  if (!chatGPTService) {
+    chatGPTService = new ChatGPTService();
+  }
+  return chatGPTService;
+};
 import { ChatConversation } from '../models/chat.models.js';
 
 // Store connected clients
@@ -384,7 +393,7 @@ async function handleChatQuery(clientId, data) {
 
     if (streaming) {
       // Handle streaming response
-      const response = await chatGPTService.generateStreamingResponse(
+      const response = await getChatGPTService().generateStreamingResponse(
         query,
         context,
         history,
@@ -433,7 +442,7 @@ async function handleChatQuery(clientId, data) {
       }
     } else {
       // Handle regular response
-      const response = await chatGPTService.generateResponse(query, context, history);
+      const response = await getChatGPTService().generateResponse(query, context, history);
       
       if (response.success) {
         // Add AI response to conversation

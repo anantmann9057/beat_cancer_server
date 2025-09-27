@@ -1,10 +1,12 @@
 import dotenv from "dotenv";
+
+// Load environment variables FIRST, before any other imports
+dotenv.config();
+
 import { createServer } from "http";
 import { WebSocketServer } from "ws";
 import { app } from "./app.js";
 import { setupWebSocket } from "./websocket/websocket.js";
-
-dotenv.config();
 
 // Create HTTP server
 const server = createServer(app);

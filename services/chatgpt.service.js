@@ -273,4 +273,5 @@ class ChatGPTService {
   }
 }
 
-export default new ChatGPTService();
+// Export the class instead of an instance
+export default ChatGPTService;
