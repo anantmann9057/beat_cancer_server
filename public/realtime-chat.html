@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Cancer Support Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .chat-messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 15px;
+            background-color: #f9f9f9;
+            margin-bottom: 15px;
+            border-radius: 8px;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+            background-color: white;
+        }
+        .message.user {
+            border-left-color: #28a745;
+            background-color: #f8fff9;
+        }
+        .message.assistant {
+            border-left-color: #007bff;
+            background-color: #f8f9ff;
+        }
+        .message.system {
+            border-left-color: #ffc107;
+            background-color: #fffef8;
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        input, select, textarea, button {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        textarea {
+            flex: 1;
+            min-height: 60px;
+            resize: vertical;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            min-width: 100px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 8px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .method-selector {
+            margin-bottom: 20px;
+        }
+        .method-selector label {
+            margin-right: 15px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🏥 Real-time Cancer Support Chat</h1>
+    
+    <div class="container">
+        <div class="method-selector">
+            <h3>Real-time Method:</h3>
+            <label><input type="radio" name="method" value="sse" checked> Server-Sent Events (Recommended)</label>
+            <label><input type="radio" name="method" value="polling"> Polling</label>
+            <label><input type="radio" name="method" value="websocket"> WebSocket (Local Only)</label>
+        </div>
+        
+        <div id="status" class="status disconnected">Disconnected</div>
+        
+        <div class="input-group">
+            <input type="text" id="serverUrl" placeholder="Server URL" value="https://beat-cancer-server.vercel.app">
+            <input type="text" id="userId" placeholder="User ID" value="patient123">
+            <input type="text" id="sessionId" placeholder="Session ID" value="">
+            <button onclick="connect()" id="connectBtn">Connect</button>
+            <button onclick="disconnect()" id="disconnectBtn" disabled>Disconnect</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <h3>💬 Cancer Support Chat</h3>
+        <div id="messages" class="chat-messages"></div>
+        
+        <div class="input-group">
+            <select id="context">
+                <option value="cancer">Cancer Support</option>
+                <option value="health">General Health</option>
+                <option value="support">Emotional Support</option>
+                <option value="technical">Technical Info</option>
+            </select>
+        </div>
+        
+        <div class="input-group">
+            <textarea id="messageInput" placeholder="Ask about cancer treatment, side effects, support resources..."></textarea>
+            <button onclick="sendMessage()" id="sendBtn" disabled>Send</button>
+        </div>
+    </div>
+
+    <script>
+        let currentMethod = 'sse';
+        let eventSource = null;
+        let pollingInterval = null;
+        let ws = null;
+        let connected = false;
+        let currentSessionId = '';
+
+        // Method selection
+        document.querySelectorAll('input[name="method"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                currentMethod = e.target.value;
+                if (connected) {
+                    disconnect();
+                }
+            });
+        });
+
+        function updateStatus(message, isConnected) {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${isConnected ? 'connected' : 'disconnected'}`;
+            connected = isConnected;
+            
+            document.getElementById('connectBtn').disabled = connected;
+            document.getElementById('disconnectBtn').disabled = !connected;
+            document.getElementById('sendBtn').disabled = !connected;
+        }
+
+        function addMessage(role, content, timestamp = new Date()) {
+            const messagesEl = document.getElementById('messages');
+            const messageEl = document.createElement('div');
+            messageEl.className = `message ${role}`;
+            
+            const time = new Date(timestamp).toLocaleTimeString();
+            messageEl.innerHTML = `
+                <strong>${role.toUpperCase()} [${time}]:</strong><br>
+                ${content}
+            `;
+            
+            messagesEl.appendChild(messageEl);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        function connect() {
+            const serverUrl = document.getElementById('serverUrl').value;
+            const userId = document.getElementById('userId').value;
+            let sessionId = document.getElementById('sessionId').value;
+            
+            if (!sessionId) {
+                sessionId = `session_${userId}_${Date.now()}`;
+                document.getElementById('sessionId').value = sessionId;
+            }
+            currentSessionId = sessionId;
+
+            switch (currentMethod) {
+                case 'sse':
+                    connectSSE(serverUrl, userId, sessionId);
+                    break;
+                case 'polling':
+                    connectPolling(serverUrl, userId, sessionId);
+                    break;
+                case 'websocket':
+                    connectWebSocket(serverUrl, userId);
+                    break;
+            }
+        }
+
+        function connectSSE(serverUrl, userId, sessionId) {
+            try {
+                const url = `${serverUrl}/api/v1/realtime/events?userId=${userId}&sessionId=${sessionId}`;
+                eventSource = new EventSource(url);
+                
+                eventSource.onopen = function() {
+                    updateStatus('Connected via Server-Sent Events', true);
+                    addMessage('system', 'Connected to real-time cancer support chat');
+                };
+                
+                eventSource.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleRealtimeMessage(data);
+                    } catch (error) {
+                        console.error('Error parsing SSE message:', error);
+                    }
+                };
+                
+                eventSource.onerror = function(error) {
+                    console.error('SSE Error:', error);
+                    updateStatus('SSE Connection Error', false);
+                };
+                
+            } catch (error) {
+                console.error('Failed to connect SSE:', error);
+                updateStatus('Failed to connect', false);
+            }
+        }
+
+        function connectPolling(serverUrl, userId, sessionId) {
+            updateStatus('Connected via Polling', true);
+            addMessage('system', 'Connected using polling method (checks every 5 seconds)');
+            
+            let lastTimestamp = new Date().toISOString();
+            
+            pollingInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(
+                        `${serverUrl}/api/v1/realtime/poll?userId=${userId}&sessionId=${sessionId}&lastTimestamp=${lastTimestamp}`
+                    );
+                    const data = await response.json();
+                    
+                    if (data.data.hasUpdates) {
+                        data.data.newMessages.forEach(msg => {
+                            addMessage(msg.role, msg.content, msg.timestamp);
+                        });
+                        lastTimestamp = data.data.lastUpdate;
+                    }
+                    
+                } catch (error) {
+                    console.error('Polling error:', error);
+                }
+            }, 5000); // Poll every 5 seconds
+        }
+
+        function connectWebSocket(serverUrl, userId) {
+            try {
+                // This only works for local development
+                const wsUrl = serverUrl.replace('https://', 'ws://').replace('http://', 'ws://');
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = function() {
+                    updateStatus('Connected via WebSocket (Local Only)', true);
+                    addMessage('system', 'Connected to WebSocket server');
+                    
+                    // Join as user
+                    ws.send(JSON.stringify({
+                        type: 'user_join',
+                        data: { userId: userId }
+                    }));
+                };
+                
+                ws.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleWebSocketMessage(data);
+                    } catch (error) {
+                        console.error('Error parsing WebSocket message:', error);
+                    }
+                };
+                
+                ws.onclose = function() {
+                    updateStatus('WebSocket Disconnected', false);
+                };
+                
+                ws.onerror = function(error) {
+                    console.error('WebSocket Error:', error);
+                    updateStatus('WebSocket Error (Use SSE for Vercel)', false);
+                };
+                
+            } catch (error) {
+                console.error('Failed to connect WebSocket:', error);
+                updateStatus('WebSocket not supported on Vercel', false);
+            }
+        }
+
+        function handleRealtimeMessage(data) {
+            switch (data.type) {
+                case 'connection':
+                case 'heartbeat':
+                    // Silent handling
+                    break;
+                case 'new_message':
+                    addMessage(data.message.role, data.message.content, data.message.timestamp);
+                    break;
+                default:
+                    console.log('Unknown SSE message:', data);
+            }
+        }
+
+        function handleWebSocketMessage(data) {
+            switch (data.type) {
+                case 'chat_response':
+                    if (data.data.status === 'completed') {
+                        addMessage('assistant', data.data.response, data.data.timestamp);
+                    }
+                    break;
+                case 'chat_streaming':
+                    // Handle streaming response
+                    updateStreamingMessage(data.data.sessionId, data.data.fullResponse);
+                    break;
+                default:
+                    console.log('WebSocket message:', data);
+            }
+        }
+
+        function updateStreamingMessage(sessionId, fullResponse) {
+            let streamingEl = document.getElementById(`streaming-${sessionId}`);
+            
+            if (!streamingEl) {
+                const messagesEl = document.getElementById('messages');
+                streamingEl = document.createElement('div');
+                streamingEl.id = `streaming-${sessionId}`;
+                streamingEl.className = 'message assistant';
+                streamingEl.innerHTML = `
+                    <strong>ASSISTANT [${new Date().toLocaleTimeString()}] - Streaming:</strong><br>
+                    <div id="streaming-content-${sessionId}"></div>
+                `;
+                messagesEl.appendChild(streamingEl);
+            }
+            
+            const contentEl = document.getElementById(`streaming-content-${sessionId}`);
+            contentEl.textContent = fullResponse;
+            
+            const messagesEl = document.getElementById('messages');
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const message = document.getElementById('messageInput').value.trim();
+            const context = document.getElementById('context').value;
+            const serverUrl = document.getElementById('serverUrl').value;
+            const userId = document.getElementById('userId').value;
+            
+            if (!message) return;
+            
+            // Add user message to chat
+            addMessage('user', message);
+            document.getElementById('messageInput').value = '';
+            
+            if (currentMethod === 'websocket' && ws && ws.readyState === WebSocket.OPEN) {
+                // Send via WebSocket
+                ws.send(JSON.stringify({
+                    type: 'chat_query',
+                    data: {
+                        query: message,
+                        context: context,
+                        sessionId: currentSessionId
+                    }
+                }));
+            } else {
+                // Send via REST API
+                try {
+                    const response = await fetch(`${serverUrl}/api/v1/chatgpt/chat`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            query: message,
+                            context: context,
+                            sessionId: currentSessionId,
+                            userId: userId
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.statusCode === 200) {
+                        addMessage('assistant', data.data.response);
+                    } else {
+                        addMessage('system', `Error: ${data.message}`);
+                    }
+                    
+                } catch (error) {
+                    console.error('Error sending message:', error);
+                    addMessage('system', `Error sending message: ${error.message}`);
+                }
+            }
+        }
+
+        function disconnect() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+            
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            
+            updateStatus('Disconnected', false);
+            addMessage('system', 'Disconnected from chat');
+        }
+
+        // Handle Enter key in message input
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // Initial setup
+        updateStatus('Disconnected', false);
+        addMessage('system', 'Welcome to Cancer Support Chat. Choose a connection method and click Connect.');
+    </script>
+</body>
+</html>

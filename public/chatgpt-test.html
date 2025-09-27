@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatGPT API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        input, select, textarea, button {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        input, textarea {
+            flex: 1;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            min-width: 100px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .response {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>ChatGPT REST API Test</h1>
+    
+    <div class="container">
+        <h3>Authentication</h3>
+        <div class="input-group">
+            <input type="text" id="jwtToken" placeholder="JWT Token (if required)">
+            <input type="text" id="userId" placeholder="User ID">
+        </div>
+    </div>
+
+    <div class="container">
+        <h3>Chat with GPT</h3>
+        <div class="input-group">
+            <textarea id="chatQuery" placeholder="Ask ChatGPT something..." rows="3"></textarea>
+        </div>
+        <div class="input-group">
+            <select id="context">
+                <option value="general">General</option>
+                <option value="health">Health</option>
+                <option value="support">Support</option>
+                <option value="technical">Technical</option>
+            </select>
+            <input type="text" id="sessionId" placeholder="Session ID (optional)">
+            <button onclick="sendChatRequest()">Send Chat Request</button>
+        </div>
+        <div id="chatResponse" class="response"></div>
+    </div>
+
+    <div class="container">
+        <h3>API Tests</h3>
+        <div class="input-group">
+            <button onclick="getModels()">Get Available Models</button>
+            <button onclick="getChatHistory()">Get Chat History</button>
+            <button onclick="getSystemPrompts()">Get System Prompts</button>
+        </div>
+        <div class="input-group">
+            <input type="text" id="moderateText" placeholder="Text to moderate">
+            <button onclick="moderateContent()">Moderate Content</button>
+        </div>
+        <div id="apiResponse" class="response"></div>
+    </div>
+
+    <script>
+        const baseURL = 'http://localhost:9000/api/v1/chatgpt';
+
+        function getAuthHeaders() {
+            const token = document.getElementById('jwtToken').value.trim();
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+            
+            return headers;
+        }
+
+        async function sendChatRequest() {
+            const query = document.getElementById('chatQuery').value.trim();
+            const context = document.getElementById('context').value;
+            const sessionId = document.getElementById('sessionId').value.trim();
+            const userId = document.getElementById('userId').value.trim();
+
+            if (!query) {
+                alert('Please enter a query');
+                return;
+            }
+
+            const responseDiv = document.getElementById('chatResponse');
+            responseDiv.textContent = 'Sending request...';
+
+            try {
+                const body = {
+                    query: query,
+                    context: context
+                };
+                
+                if (sessionId) body.sessionId = sessionId;
+                if (userId) body.userId = userId;
+
+                const response = await fetch(`${baseURL}/chat`, {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify(body)
+                });
+
+                const data = await response.json();
+                responseDiv.textContent = JSON.stringify(data, null, 2);
+
+            } catch (error) {
+                responseDiv.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function getModels() {
+            const responseDiv = document.getElementById('apiResponse');
+            responseDiv.textContent = 'Fetching models...';
+
+            try {
+                const response = await fetch(`${baseURL}/models`);
+                const data = await response.json();
+                responseDiv.textContent = JSON.stringify(data, null, 2);
+
+            } catch (error) {
+                responseDiv.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function getChatHistory() {
+            const sessionId = document.getElementById('sessionId').value.trim();
+            const responseDiv = document.getElementById('apiResponse');
+            responseDiv.textContent = 'Fetching chat history...';
+
+            try {
+                const url = sessionId ? `${baseURL}/history/${sessionId}` : `${baseURL}/history`;
+                const response = await fetch(url, {
+                    headers: getAuthHeaders()
+                });
+
+                const data = await response.json();
+                responseDiv.textContent = JSON.stringify(data, null, 2);
+
+            } catch (error) {
+                responseDiv.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function moderateContent() {
+            const content = document.getElementById('moderateText').value.trim();
+            
+            if (!content) {
+                alert('Please enter text to moderate');
+                return;
+            }
+
+            const responseDiv = document.getElementById('apiResponse');
+            responseDiv.textContent = 'Moderating content...';
+
+            try {
+                const response = await fetch(`${baseURL}/moderate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ content: content })
+                });
+
+                const data = await response.json();
+                responseDiv.textContent = JSON.stringify(data, null, 2);
+
+            } catch (error) {
+                responseDiv.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function getSystemPrompts() {
+            const responseDiv = document.getElementById('apiResponse');
+            responseDiv.textContent = 'Fetching system prompts...';
+
+            try {
+                const response = await fetch(`${baseURL}/prompts`);
+                const data = await response.json();
+                responseDiv.textContent = JSON.stringify(data, null, 2);
+
+            } catch (error) {
+                responseDiv.textContent = `Error: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>
